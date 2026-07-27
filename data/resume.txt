@@ -1,0 +1,21 @@
+Prerana P
+CSE Student, RNS Institute of Technology, Bangalore
+
+EXPERIENCE
+Built an Indian Skin Shade Finder, a computer vision tool that recommends
+makeup products matched to skin tone. Deployed on Hugging Face Spaces and
+GitHub. Expanded the product database to cover 21 skin tone combinations
+across 7 depth levels and 3 undertones, sourcing products from brands like
+Lakme, MAC, NARS, and Fenty. Fixed several bugs including color extraction
+issues caused by background clothing contamination.
+
+Built Study Buddy, a React and Tailwind study app powered by the Claude
+API, featuring explanation, quiz, flashcard, and pomodoro timer panels.
+
+Built multiple interactive quiz applications for university coursework
+covering environmental studies, financial systems, and human values,
+each with navigation, scoring, and review modes.
+
+SKILLS
+React, Vite, Tailwind CSS, Python, computer vision basics, prompt
+engineering with the Claude API.

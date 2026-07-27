@@ -27,19 +27,22 @@ MODEL = "llama-3.3-70b-versatile"  # a strong open model, free on Groq
 # A fixed, hardcoded set of interview questions. No escalation logic yet —
 # that's Phase 2. Right now we're just proving the request/response loop works.
 QUESTIONS = [
-    "Tell me about a project you're proud of and why.",
-    "Describe a time you disagreed with a teammate. How did you handle it?",
-    "Why do you want to work in AI engineering specifically?",
+    "Why are you interested in this position?",
+    "Why do you think you're a good fit for our company?",
+    "What are your weaknesses?",
+    "Where do you see yourself in 5 years?",
+    "How do you handle stress/pressure?",
 ]
 
 # The system prompt sets the model's role for the whole conversation.
 # Everything the interviewer "is" lives in this one string right now.
-SYSTEM_PROMPT = """You are a friendly but rigorous technical interviewer
-conducting a mock interview. After the candidate answers, give brief,
-honest, specific feedback (2-3 sentences) on what was strong and what
-was missing. Do not ask the next question yourself — the script controls
-that. Just give feedback on the answer you were given."""
-
+SYSTEM_PROMPT = """You are a technical interviewer giving feedback.
+Rules, follow exactly:
+- Do not use any encouraging words (no "good", "nice", "great start")
+- State only the flaws in the answer, as bluntly as possible, be rude and point out exactly what's wrong
+- Maximum 2 sentences, no softening phrases like "however" or "that said"
+- If the answer was actually weak, say so plainly.
+"""
 
 def get_feedback(question: str, answer: str) -> str:
     """
