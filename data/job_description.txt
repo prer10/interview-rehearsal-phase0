@@ -1,0 +1,14 @@
+AI Engineer — Junior/Associate
+
+We're looking for an engineer to help build and maintain LLM-powered
+features across our product. Responsibilities include designing
+retrieval-augmented generation pipelines, working with vector databases,
+integrating LLM APIs into production backends, and building evaluation
+harnesses to measure output quality.
+
+Requirements:
+- Strong Python fundamentals
+- Experience with at least one frontend framework (React preferred)
+- Familiarity with prompt engineering and LLM APIs
+- Understanding of embeddings and vector search
+- Bonus: experience with LangChain, FastAPI, or Docker
