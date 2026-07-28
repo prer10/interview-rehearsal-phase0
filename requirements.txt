@@ -3,3 +3,8 @@ langchain
 langchain-text-splitters
 sentence-transformers
 chromadb
+langgraph
+uvicorn[standard]
+fastapi
+python-dotenv
+langfuse

@@ -1,17 +1,15 @@
 """
-TRACK B — session manager stub.
-
-This is the piece that decides what happens next in a rehearsal session.
-It imports `retrieve` from Track A's module but doesn't need to know how
-retrieval works internally — that's the point of splitting the work.
+agents/session_manager.py — now accepts optional retrieved context, so
+follow-up questions can be grounded in real resume/JD facts instead of
+being generic. This is the actual "wire Track A into Track B" moment.
 """
 
 import os
+from dotenv import load_dotenv
 from openai import OpenAI
 
-# Swapped-in during the "wire together" step. Until then, use the
-# placeholder in rag/retrieve.py directly, or copy the stub locally.
-# from rag.retrieve import retrieve
+load_dotenv()
+from personas import PERSONAS
 
 client = OpenAI(
     api_key=os.environ.get("GROQ_API_KEY"),
@@ -21,53 +19,77 @@ MODEL = "llama-3.3-70b-versatile"
 
 
 def classify_answer_strength(question: str, answer: str) -> str:
-    """
-    The simplest possible version of "escalation logic": one extra LLM
-    call that classifies the answer, which the session manager then
-    branches on. This is intentionally not fancy yet — get this working
-    before making it smarter.
-
-    Returns "strong" or "weak".
-    """
     response = client.chat.completions.create(
         model=MODEL,
         max_tokens=10,
         messages=[
-            {
-                "role": "system",
-                "content": "Classify the candidate's answer as exactly "
-                "one word: 'strong' or 'weak'. Nothing else.",
-            },
-            {
-                "role": "user",
-                "content": f"Question: {question}\nAnswer: {answer}",
-            },
+            {"role": "system", "content": "Classify the candidate's answer "
+             "as exactly one word: 'strong' or 'weak'. Nothing else."},
+            {"role": "user", "content": f"Question: {question}\nAnswer: {answer}"},
         ],
     )
     result = response.choices[0].message.content.strip().lower()
     return "weak" if "weak" in result else "strong"
 
 
-def next_question(question: str, answer: str) -> str:
+def generate_deeper_followup(question: str, answer: str, persona: str, context=None) -> str:
     """
-    TODO: this is where you decide the next question.
-    - If classify_answer_strength() says "weak", dig deeper on the same
-      topic (use retrieve() to ground the follow-up in something real
-      from the resume/JD)
-    - If "strong", move to the next topic
+    NEW: `context` is a list of retrieved text chunks (from Track A's
+    retrieve()). When provided, the follow-up is asked to ground itself
+    in that real information instead of staying generic. This is the
+    single most important change in the whole project — it's what turns
+    "an agent that reacts" into "an agent that reasons using RAG."
+    """
+    context_block = ""
+    if context:
+        context_block = (
+            "\n\nRelevant background info about the candidate (from their "
+            "resume/job description):\n" + "\n".join(f"- {c}" for c in context)
+        )
 
-    Left unimplemented on purpose — this branching logic is the actual
-    hard, interesting part of the project. Build it incrementally: get
-    "weak -> ask a generic deeper follow-up" working first, then make
-    the follow-up grounded in retrieval.
+    response = client.chat.completions.create(
+        model=MODEL,
+        max_tokens=120,
+        messages=[
+            {"role": "system", "content": PERSONAS[persona]},
+            {"role": "user", "content": (
+                f"The candidate was asked: '{question}'\n"
+                f"They answered: '{answer}'\n"
+                f"{context_block}\n"
+                "That answer was too vague. Ask ONE specific follow-up "
+                "question pushing for a concrete detail — reference the "
+                "background info above by name if it's relevant. Output "
+                "only the question."
+            )},
+        ],
+    )
+    return response.choices[0].message.content.strip()
+
+
+def next_question(question: str, answer: str, remaining_questions: list,
+                   persona: str = "behavioral", context=None):
+    """
+    Returns (next_question_text, is_followup, strength) — now returns
+    strength too, so the caller can use it for feedback text without
+    re-classifying.
     """
     strength = classify_answer_strength(question, answer)
-    raise NotImplementedError(f"Answer classified as {strength} — now build the branch")
+
+    if strength == "weak":
+        followup = generate_deeper_followup(question, answer, persona, context)
+        return followup, True, strength
+    else:
+        next_q = remaining_questions[0] if remaining_questions else None
+        return next_q, False, strength
 
 
 if __name__ == "__main__":
-    result = classify_answer_strength(
+    # Manual test with fake context, simulating what Track A would return.
+    fake_context = ["Built a React and Tailwind study app called Study Buddy."]
+    result = next_question(
         "Tell me about a project you're proud of.",
-        "I worked on a to-do list app once.",
+        "I built an app once.",
+        remaining_questions=["What are your weaknesses?"],
+        context=fake_context,
     )
-    print(f"Classified as: {result}")
+    print(result)
