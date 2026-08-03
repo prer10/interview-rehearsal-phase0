@@ -19,14 +19,16 @@ from pydantic import BaseModel
 
 from graph_session_manager import rehearsal_graph
 from langfuse import observe, propagate_attributes
+from db import init_db, save_session
 from retrieve import retrieve
 from scorer import generate_session_report
 
 app = FastAPI()
+init_db()  # ensures the sessions table exists on startup
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["http://localhost:3000", "http://localhost:3001"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -97,6 +99,7 @@ def start_session(req: StartRequest):
         "followup_count": 0,
         "history": [],
         "questions": questions,
+        "role": role,
     }
     return {"session_id": session_id, "first_question": questions[0]}
 
@@ -162,7 +165,11 @@ def submit_answer(req: AnswerRequest):
 def finish_session(req: FinishRequest):
     session = sessions.pop(req.session_id, None)
     history = session["history"] if session else []
+    role = session["role"] if session else DEFAULT_ROLE
     report = generate_session_report(history)
+
+    save_session(req.session_id, role, report["score"], report["summary"])
+
     return {
         "summary": report["summary"],
         "score": report["score"],
