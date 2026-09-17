@@ -1,27 +1,29 @@
 """
-FastAPI backend — wires Track A (retrieve) and Track B (session_manager)
-together behind the API_CONTRACT.md endpoints.
+FastAPI backend — wires Track A (retrieve) and Track B (LangGraph agent)
+together behind the API endpoints, with Neon persistence, Langfuse
+tracing, and real speech transcription.
 """
 
 import os
 import sys
 import uuid
-from dotenv import load_dotenv
-
-load_dotenv()
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "agents"))
 sys.path.append(os.path.join(os.path.dirname(__file__), "rag"))
 
-from fastapi import FastAPI
+from dotenv import load_dotenv
+load_dotenv()
+
+from fastapi import FastAPI, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from graph_session_manager import rehearsal_graph
-from langfuse import observe, propagate_attributes
-from db import init_db, save_session
 from retrieve import retrieve
 from scorer import generate_session_report
+from langfuse import observe, propagate_attributes
+from db import init_db, save_session, get_all_sessions
+from transcribe import transcribe_audio
 
 app = FastAPI()
 init_db()  # ensures the sessions table exists on startup
@@ -33,7 +35,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Real per-role question banks — this is what Role actually controls now.
+# Real per-role question banks — Role actually controls this.
 QUESTION_BANKS = {
     "SDE": [
         "Tell me about a project you're proud of.",
@@ -68,7 +70,7 @@ QUESTION_BANKS = {
 }
 DEFAULT_ROLE = "SDE"
 
-MAX_FOLLOWUPS_PER_QUESTION = 2  # real cap, but re-classifies each time
+MAX_FOLLOWUPS_PER_QUESTION = 2
 
 sessions = {}
 
@@ -89,10 +91,27 @@ class FinishRequest(BaseModel):
     session_id: str
 
 
+@app.post("/transcribe")
+async def transcribe(file: UploadFile = File(...)):
+    audio_bytes = await file.read()
+    text = transcribe_audio(audio_bytes, filename=file.filename or "audio.webm")
+    return {"text": text}
+
+
+@app.get("/sessions")
+def list_sessions():
+    """
+    Powers the dashboard — real session history from Neon, most recent
+    first. This is the endpoint the frontend's Score Trends, Practice
+    Calendar, and Session Records widgets will all read from.
+    """
+    return get_all_sessions()
+
+
 @app.post("/session/start")
 def start_session(req: StartRequest):
     session_id = str(uuid.uuid4())
-    role = getattr(req, "role", DEFAULT_ROLE) or DEFAULT_ROLE
+    role = req.role or DEFAULT_ROLE
     questions = QUESTION_BANKS.get(role, QUESTION_BANKS[DEFAULT_ROLE])
     sessions[session_id] = {
         "index": 0,
@@ -110,8 +129,6 @@ def submit_answer(req: AnswerRequest):
     session = sessions[req.session_id]
     session["history"].append({"question": req.question, "answer": req.answer})
 
-    # RAG wiring: retrieve relevant resume/JD context for THIS answer,
-    # every turn — not just the first time.
     context = retrieve(f"{req.question} {req.answer}", k=2)
     remaining = session["questions"][session["index"] + 1:]
 
@@ -129,7 +146,6 @@ def submit_answer(req: AnswerRequest):
     is_followup = result["is_followup"]
     strength = result["strength"]
 
-    # Real re-classification each turn, capped so it can't loop forever.
     reached_cap = session["followup_count"] >= MAX_FOLLOWUPS_PER_QUESTION
 
     if is_followup and not reached_cap:
@@ -141,8 +157,6 @@ def submit_answer(req: AnswerRequest):
             "session_complete": False,
         }
 
-    # Either the answer was actually strong, OR we hit the follow-up cap
-    # — either way, advance for real now.
     session["index"] += 1
     session["followup_count"] = 0
     done = session["index"] >= len(session["questions"])
